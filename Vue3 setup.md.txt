@@ -1,0 +1,168 @@
+# Vue 3의 setup 기능이 제공하는 간결한 컴포넌트 문법
+
+2021-09-17 · 6 min to read
+
+[Vue.js](https://blog.rhostem.com/tag/vue.js)
+
+Vue는 스크립트, 마크업, 스타일시트를 한 파일 안에서 작성할 수 있는 SFC(Single File Component) 문법으로 컴포넌트를 작성할 수 있는 `*.vue` 파일을 지원한다. SFC는 아래와 같은 방식으로 작성할 수 있다. `template` 태그 안은 마크업이며 `script` 안에서 선언한 변수를 사용할 수 있다. 마크업 안에서는 `style` 태그 안에서 작성한 스타일시트도 사용할 수 있다.
+
+```html
+<template>
+  <div class="example">{{ msg }}</div>
+</template>
+
+<script>
+export default {
+  data() {
+    return {
+      msg: 'Hello world!'
+    }
+  }
+}
+</script>
+
+<style>
+.example {
+  color: red;
+}
+</style>
+```
+
+Vue는 기본적으로 컴포넌트 모듈을 객체 형태로 선언하며 props 정의(`props`), 상태 변수(`data`), 메소드(`methods`), 라이프사이클(`mounted`, `updated`, `beforeUnmount`, …), 계산된 값(`computed`), 특정 값의 업데이트 탐지(`watch`) 등의 기능을 객체의 속성과 메소드를 사용해서 선언한다.
+
+속성별로 역할과 책임 소재가 분명히 나눠져 있다는 점에서 컴포넌트가 어떻게 동작하는지 이해하는 데 도움을 준다. 하지만 앱의 규모가 커지면서 컴포넌트 수가 늘어나고 코드가 길어지면 문제가 생긴다. `data`, `methods`, `template`, `watch` 등은 모두 유기적으로 동작하는데, 컴포넌트의 덩치가 크면 여기저기로 점프를 하며 코드를 읽어야 하는 일이 자주 발생하게 된다. 즉 가독성이 매우 떨어지게 된다. 그런 상태가 되면 특정 기능과 관련된 변수와 메소드는 한곳에 모여 있으면 보기 좋겠다는 생각이 자연히 들게 된다. 그래서인지 Vue 3에서는 [Composition API](https://v3.vuejs.org/guide/composition-api-introduction.html#why-composition-api)를 제공한다.
+
+## Composition API 와 `setup` 함수의 등장
+
+Vue 3에서는 컴포넌트 객체에 [`setup`](https://v3.vuejs.org/guide/composition-api-setup.html) 함수를 사용할 수 있다. [`ref`](https://v3.vuejs.org/guide/composition-api-introduction.html#reactive-variables-with-ref) 를 사용해서 반응형 변수로 `data`를, 보통의 자바스크립트 함수로 `methods`를 대체한다. 라이프사이클 메소드는 `onMounted`, `onUpdated` 같은 [라이프사이클 훅](https://v3.vuejs.org/api/composition-api.html#lifecycle-hooks) 함수가 대신한다. 반응형 변수의 변경 탐지 역시 [`watch`](https://v3.vuejs.org/guide/composition-api-introduction.html#reacting-to-changes-with-watch) 함수로 구현 가능하며 계산된 값을 위한 `computed` 함수도 제공된다. 컴포넌트 객체애서 속성으로 분리되었던 기능 대부분이 `setup` 함수 안에서 사용 가능하다. `setup`을 사용하는 컴포넌트는 아래와 같은 방식으로 작성한다.
+
+```html
+<script>
+import { ref, onMounted } from 'vue'
+
+export default {
+  props: {
+    name: String
+  },
+  setup(props) {
+    const isSubmited = ref(false);
+    const onSubmit = () => {
+      isSubmited.value = true;
+    }
+
+    onMouted(() => console.log('component mounted'));
+
+    // template에 전달한다.
+    return { 
+      isSubmited,
+      onSubmit
+    }
+  }
+}
+</script>
+<template>
+  <div>{{ name }} {{ isSubmited ? 'submited' : 'not yet' }}</div>
+  <button @click="onSubmit">Submit</button>
+</template>
+```
+
+중요한 차이점은 `setup` 함수는 컴포넌트 인스턴스가 생성되기 전에 실행된다는 점이다. 즉 컴포넌트 인스턴스에 접근이 필요한 기능은 사용할 수 없다. 즉 `setup` 안에서 `this`를 통해 컴포넌트 객체의 `data`, `computed`, `methods` 에서 선언한 것들에는 접근이 불가능하다. 그리고 인스턴스가 생성된 직후에 호출되는 `created` 메소드에 매칭되는 라이프 사이클 훅도 존재하지 않는다.
+
+## 커스텀 훅을 사용한 로직 분리 및 재활용
+
+Vue에서는 [`mixins`](https://v3.vuejs.org/guide/mixins.html#basics)를 사용해서 로직 재활용이 가능하다. 하지만 [컴포넌트 속성이 병합](https://v3.vuejs.org/guide/mixins.html#option-merging)된다는 특징을 가질 수밖에 없다. 예를 들어 컴포넌트와 믹스인에서 선언한 `data` 함수에서 리턴하는 변수의 이름이 같으면 의도하지 않게 덮어씌워지거나 하는 등의 충돌이 발생할 수 있기에 사용에 있어 주의가 필요하다. 하지만 `setup`을 사용하면 외부 함수를 호출하는 방식으로 완전한 로직의 분리가 가능하다. React를 사용한다면 함수형 컴포넌트에서 로직 공유를 위해 커스텀 훅을 구현하는 일에 익숙할텐데, Vue 3에서는 `setup` 함수 안에서 그와 똑같은 방법을 사용할 수 있게 되었다.
+
+예를 들어 Select 컴포넌트를 위한 옵션을 서버에서 가져와야 하는데, 그 과정이 여러 페이지에서 필요하다고 가정하자. 그렇다면 옵션 데이터를 가져오는 과정을 훅 함수 안에서 구현한 후 `setup` 안에서 호출하여 결과만 가져오는 방식을 사용하면 된다.
+
+```jsx
+export default function useSomeOptions() {
+	const options = ref([]);
+
+  onMounted(() => {
+		axios.get('https://api.server.com').then(({ data }) => {
+			options.value = data;
+		})
+  })
+
+	return {
+		options
+	}
+}
+<template>
+  <select>
+    <option v-for="(item, index) in options" :key="index">{{ item }}</option>
+  </select>
+</template>
+
+<script>
+import useSomeOptions from './useSomeOptions'
+
+export default {
+  name: 'Page component',
+  setup() {
+		const { options } = useSomeOptions();
+    return {
+      options,
+    };
+  },
+}
+</script>
+
+<style></style>
+```
+
+Vue의 기존 문법을 선호하는 사람이라면 `setup` 함수와 커스텀 훅을 볼 때 Vue를 React스럽게 쓴다고 거부감을 표현할 수도 있을 것 같다. `setup` 안에서는 심지어 React처럼 [render 함수](https://v3.vuejs.org/guide/render-function.html)와 JSX까지 지원하며 `template` 파트가 완전히 사라지게 구현할 수도 있다(타입스크립트를 사용하는 입장이라면 더욱 선호할 것이다). 하지만 Vue 3에서도 `mixins` 등 기존 문법은 여전히 지원하므로 개인이 선호하는 방식으로 구현하면 된다. 대신 React를 사용하는 사람 입장에서는 친숙한 패턴으로 인해 진입 장벽이 많이 낮아졌다고 할 수 있다.
+
+## script setup 문법
+
+컴포넌트 객체의 `setup` 함수는 확실히 혁신적이고 큰 변화지만 여전히 아쉬운 점이 있다. `data`, `methods` 와 마찬가지로 `return` 을 사용해서 템플릿으로 값을 넘기는 과정이 필요하다는 것이다. React 함수형 컴포넌트에서 상태 변수, 메소드를 선언한 후 JSX 안에서 바로 사용하는 데 익숙한 입장에서는 다소 번거롭고 버그가 많이 발생하는 부분이었다. `setup`은 물론 다른 옵션들도 마찬가지다. 예를 들어 `template` 안에서 사용할 외부 컴포넌트는 모듈 import 후에 컴포넌트의 `components` 속성에 추가해야 한다. import만으로 끝나지 않는다는 말은 상용구(boilerplate) 코드가 별도로 필요하다는 것, 그리고 앱의 사이즈가 커짐에 따라 반복 작업이 늘어난다는 말이 된다.
+
+Vue 3에서는 이런 불편함을 해소할 수 있는 방법을 제공한다. script setup 문법이 그것이다.
+
+```html
+<script setup>
+// 변수 선언
+const msg = 'Hello!'
+
+// 함수 선언
+function log() {
+  console.log(msg)
+}
+</script>
+
+<template>
+  <!-- 템플릿 안에서 바로 사용 가능 -->
+  <div @click="log">{{ msg }}</div>
+</template>
+```
+
+뭔가 코드가 허전할 정도로 많이 줄었다. `return`을 통해서 template에 명시적으로 전달하는 과정이 생략된 덕분이다. 컴포넌트 모듈도 import만 해주면 template 안에서 사용할 수 있다. 특히 컴포넌트를 타입스크립트로 사용할 때 더 좋다. 컴포넌트 객체로 `props`를 선언하기 위해서는 Javascript의 Primitive 데이터의 생성자 함수(ex. `String`, `Object`, `Function`)와 `PropType`을 조합해야 했지만, script setup 안에서는 `defineProps`에 제네릭과 타입스크립트의 타입을 그대로 사용하면 된다.
+
+```tsx
+const props = defineProps<{
+  foo: string;
+  bar?: {
+		data: number;
+    isSetup: boolean;
+	}
+}>()
+```
+
+## setup 기능의 장단점
+
+Vue 3에서 제공하는 `setup`의 장점과 단점은 아래와 같이 정리할 수 있다.
+
+### 장점
+
+- 간결한 문법으로 상용구(boilerplate)를 줄일 수 있음
+- 타입스크립트를 사용해 props와 emmited value 선언이 가능
+- 런타임 성능의 향상(템플릿이 setup 스크립트와 같은 스코프(scope)에 있는 [render 함수](https://v3.vuejs.org/guide/render-function.html)로 컴파일되므로 프록시가 필요없음)
+- 더 뛰어난 IDE 타입 추론 성능 (language 서버가 코드로부터 타입을 추론해내는 데 비용이 덜 든다)
+
+### 단점
+
+- Vue 3는 정식 배포 전이므로 버그 및 API 스펙 변경 가능성 있음
+- 아직(2021년 9월 현재) vscode의 공식 툴인 Vetur의 지원이 완벽하지 않음
+  - ex. import한 컴포넌트를 render 함수가 아닌 template에서 사용하면 “사용하지 않은 변수”라는 문법 오류를 표시함
+
+타입스크립트로 Vue 3를 사용해 본 입장에서는 setup 기능을 굳이 사용하지 않을 이유가 없었다. script setup이 제공하는 간결한 문법에 Vue의 반응형 시스템, 편리한 directive들까지 생각하면 Vue 3는 예전보다 훨씬 더 매력적인 도구로 다가오고 있다.
